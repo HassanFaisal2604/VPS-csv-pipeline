@@ -30,6 +30,13 @@ function ConvertTo-CygPath($p) {
 $RsyncSrc    = ConvertTo-CygPath $Results
 $SshKeyRsync = ConvertTo-CygPath $SshKey
 
+# cygwin rsync MUST use its own bundled cygwin ssh - spawning Windows-native
+# OpenSSH kills the rsync protocol at 0 bytes (cygwin/native pipe mismatch).
+$BundledSsh = "C:\ProgramData\chocolatey\lib\rsync\tools\ssh.exe"
+$SshCmd = if ($cfg['CSV_SSH_EXE']) { ConvertTo-CygPath $cfg['CSV_SSH_EXE'] }
+          elseif (Test-Path $BundledSsh) { ConvertTo-CygPath $BundledSsh }
+          else { "ssh" }
+
 # only files older than 5 min: the bot may still be writing newer ones (plan guard)
 $cutoff = (Get-Date).AddMinutes(-5)
 $files = @(Get-ChildItem -Path $Results -Recurse -Filter *.csv |
@@ -41,7 +48,7 @@ $files = @(Get-ChildItem -Path $Results -Recurse -Filter *.csv |
 # remote host, so no Windows path may appear anywhere on its command line.
 # accept-new: trust the server's host key on first contact (task runs unattended
 # as SYSTEM, whose known_hosts is empty), refuse if it ever CHANGES afterwards
-$out = $files | & rsync -az --remove-source-files --files-from=- -e "ssh -i $SshKeyRsync -o StrictHostKeyChecking=accept-new" "$RsyncSrc" "$Dest" 2>&1
+$out = $files | & rsync -az --remove-source-files --files-from=- -e "$SshCmd -i $SshKeyRsync -o StrictHostKeyChecking=accept-new" "$RsyncSrc" "$Dest" 2>&1
 $code = $LASTEXITCODE
 "$(Get-Date -Format o) rsync exit $code`n$out" | Add-Content $LogFile
 exit $code
