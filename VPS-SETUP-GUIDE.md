@@ -20,7 +20,7 @@ Conventions:
 ## Step 0 - server prep (once ever, skip if another VPS is already live)
 
 ```
-server$ mkdir -p /home/app/incoming /home/app/processed /home/app/failed
+server$ mkdir -p /home/app/incoming /home/app/processed /home/app/failed   # run as app, NOT root
 server$ command -v rrsync || sudo sh -c 'gunzip -c /usr/share/doc/rsync/scripts/rrsync.gz > /usr/local/bin/rrsync && chmod +x /usr/local/bin/rrsync'
 ```
 
@@ -152,6 +152,7 @@ server$ rm -rf /home/app/incoming/<SV_NAME>
 | Key line ends with a personal email | Old default reused an existing `id_ed25519` | Pull latest, re-run setup (dedicated `csv-courier_ed25519` default) |
 | rsync: "source and destination cannot both be remote" | Old script passed `C:/...` to rsync (reads the colon as a remote host) | `git -C C:\courier pull` - the script now converts paths itself. `CSV_RESULTS` stays Windows-style |
 | "connection unexpectedly closed (0 bytes)" right after SSH auth succeeds | cygwin rsync spawned Windows-native OpenSSH (pipe mismatch kills the protocol) | `git -C C:\courier pull` - the courier now uses the cygwin ssh bundled with the rsync package (`CSV_SSH_EXE` in `.env` overrides) |
+| `mkdir ... failed: Permission denied (13)` on the server side | Step 0 dirs were created as root, so `app` cannot write them | `sudo chown -R app:app /home/app/incoming /home/app/processed /home/app/failed` |
 | "Permission denied (publickey)" | authorized_keys line mangled or perms | Re-paste as ONE line in single quotes; `chmod 600` the file |
 | rsync error mentioning the destination path | rrsync missing/not executable on server | Redo step 0 |
 | `git pull` fails in the log | Box was set up from a ZIP, not a clone | Redo step 1 into `C:\courier`, re-run setup |
