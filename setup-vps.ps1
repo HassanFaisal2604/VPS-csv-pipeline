@@ -1,4 +1,4 @@
-# setup-vps.ps1 — one-time setup of a Windows VPS as a CSV courier. No arguments:
+# setup-vps.ps1 - one-time setup of a Windows VPS as a CSV courier. No arguments:
 #   1. git clone https://github.com/HassanFaisal2604/VPS-csv-pipeline.git C:\courier
 #   2. copy .env.example to .env, set CSV_SERVER (SV1/SV2/...)
 #   3. run this in an ADMIN PowerShell:
@@ -10,10 +10,10 @@
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# 0. config comes from .env next to this script — same file the courier reads
+# 0. config comes from .env next to this script - same file the courier reads
 if (-not (Test-Path "$here\.env")) {
     Copy-Item "$here\.env.example" "$here\.env"
-    Write-Host "Created $here\.env — edit it (set CSV_SERVER), then re-run this script."
+    Write-Host "Created $here\.env - edit it (set CSV_SERVER), then re-run this script."
     exit 1
 }
 $cfg = @{}
