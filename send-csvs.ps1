@@ -13,7 +13,7 @@ $Server   = $cfg['CSV_SERVER']
 if (-not $Server) { Write-Error "CSV_SERVER not set - copy .env.example to .env in $here and edit it"; exit 2 }
 $Results  = if ($cfg['CSV_RESULTS'])   { $cfg['CSV_RESULTS'] }   else { "C:/Results" }
 $DestHost = if ($cfg['CSV_DEST_HOST']) { $cfg['CSV_DEST_HOST'] } else { "app@188.245.122.19" }
-$SshKey   = if ($cfg['CSV_SSH_KEY'])   { $cfg['CSV_SSH_KEY'] }   else { "$env:USERPROFILE/.ssh/id_ed25519" }
+$SshKey   = if ($cfg['CSV_SSH_KEY'])   { $cfg['CSV_SSH_KEY'] }   else { "$env:USERPROFILE/.ssh/csv-courier_ed25519" }
 $LogFile  = if ($cfg['CSV_LOG'])       { $cfg['CSV_LOG'] }       else { "C:/Results/send-csvs.log" }
 
 # NOTE: the key is locked server-side to rrsync rooted at /home/app/incoming,

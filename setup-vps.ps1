@@ -44,7 +44,7 @@ $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [En
 rsync --version | Select-Object -First 1
 
 # 2. SSH key, no passphrase (runs unattended from Task Scheduler)
-$key = if ($cfg['CSV_SSH_KEY']) { $cfg['CSV_SSH_KEY'] } else { "$env:USERPROFILE\.ssh\id_ed25519" }
+$key = if ($cfg['CSV_SSH_KEY']) { $cfg['CSV_SSH_KEY'] } else { "$env:USERPROFILE\.ssh\csv-courier_ed25519" }
 if (-not (Test-Path $key)) {
     New-Item -ItemType Directory -Force (Split-Path -Parent $key) | Out-Null
     ssh-keygen -t ed25519 -f $key -N '""' -C "csv-courier-$Server"
