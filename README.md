@@ -6,6 +6,8 @@ VPSes have it the next night.
 
 ## One-time setup per VPS (admin PowerShell)
 
+**Full step-by-step runbook with per-step verification: [VPS-SETUP-GUIDE.md](VPS-SETUP-GUIDE.md)** - use it for onboarding; below is the short version.
+
 ```powershell
 git clone https://github.com/HassanFaisal2604/VPS-csv-pipeline.git C:\courier
 Copy-Item C:\courier\.env.example C:\courier\.env
