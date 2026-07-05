@@ -8,26 +8,25 @@ VPSes have it the next night.
 
 ```powershell
 git clone https://github.com/HassanFaisal2604/VPS-csv-pipeline.git C:\courier
-powershell -ExecutionPolicy Bypass -File C:\courier\setup-vps.ps1 -Server SV1
+Copy-Item C:\courier\.env.example C:\courier\.env
+notepad C:\courier\.env          # set CSV_SERVER (SV1, SV2, ...)
+powershell -ExecutionPolicy Bypass -File C:\courier\setup-vps.ps1
 ```
 
-`setup-vps.ps1` installs rsync + git (Chocolatey), generates an SSH key,
-stores the per-box identity as machine env vars (`CSV_SERVER`, `CSV_SSH_KEY`),
-and registers the 23:55 nightly task (git pull, then send). It ends by
-printing the `authorized_keys` line to add on the server. Idempotent — re-run
-it any time to repair a box.
+`setup-vps.ps1` takes no arguments — everything comes from `.env`. It installs
+rsync + git (Chocolatey), generates an SSH key, and registers the 23:55 nightly
+task (git pull, then send). It ends by printing the `authorized_keys` line to
+add on the server. Idempotent — re-run it any time to repair a box.
 
-## Per-box configuration (env vars, never in git)
+## Configuration — `.env` next to the scripts (gitignored, survives pulls)
 
 | Var | Meaning | Default |
 |---|---|---|
-| `CSV_SERVER` | VPS name = server-side incoming subfolder | set by setup |
-| `CSV_SSH_KEY` | private key path | set by setup |
-| `CSV_RESULTS` | where the bot writes CSVs | `C:/Results` |
+| `CSV_SERVER` | VPS name = server-side incoming subfolder | **required** |
+| `CSV_RESULTS` | where the bot writes CSVs (use `/cygdrive/c/Results` if rsync can't see `C:/`) | `C:/Results` |
 | `CSV_DEST_HOST` | user@host of the ingest server | `app@188.245.122.19` |
+| `CSV_SSH_KEY` | private key path | `%USERPROFILE%/.ssh/id_ed25519` |
 | `CSV_LOG` | log file | `C:/Results/send-csvs.log` |
-
-Change any of them with `[Environment]::SetEnvironmentVariable("CSV_RESULTS", "D:/Results", "Machine")`.
 
 ## Manual run / check
 

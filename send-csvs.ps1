@@ -1,22 +1,20 @@
 # send-csvs.ps1 — VPS courier: ship bot CSVs to the Hetzner server via rsync/ssh.
 # Runs from Task Scheduler (via git pull, see setup-vps.ps1) after the bot writes.
 # Requires cwRsync installed and on PATH. See send-csvs.sh for the POSIX reference.
-# This file is pulled from git — do NOT edit it on the box. Per-box values come
-# from machine environment variables (set once by setup-vps.ps1), so `git pull`
-# can never clobber them:
-#   CSV_SERVER    per-VPS name = incoming subfolder (e.g. SV1)   [required]
-#   CSV_SSH_KEY   path to the private key                        [required]
-#   CSV_RESULTS   where the bot writes *.csv     (default C:/Results; use
-#                 /cygdrive/c/Results if this rsync build can't see C:/)
-#   CSV_DEST_HOST user@host of the ingest server (default app@188.245.122.19)
-#   CSV_LOG       log file path                  (default C:/Results/send-csvs.log)
+# This file is pulled from git — do NOT edit it on the box. Per-box values live in
+# .env next to this script (gitignored, so pull never clobbers it). See .env.example.
 
-$Server   = $env:CSV_SERVER
-$SshKey   = $env:CSV_SSH_KEY
-if (-not $Server -or -not $SshKey) { Write-Error "CSV_SERVER / CSV_SSH_KEY env vars not set — run setup-vps.ps1"; exit 2 }
-$Results  = if ($env:CSV_RESULTS)   { $env:CSV_RESULTS }   else { "C:/Results" }
-$DestHost = if ($env:CSV_DEST_HOST) { $env:CSV_DEST_HOST } else { "app@188.245.122.19" }
-$LogFile  = if ($env:CSV_LOG)       { $env:CSV_LOG }       else { "C:/Results/send-csvs.log" }
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+$cfg = @{}
+foreach ($line in (Get-Content "$here\.env" -ErrorAction SilentlyContinue)) {
+    if ($line -match '^\s*([^#=]+?)\s*=\s*(.*?)\s*$') { $cfg[$Matches[1]] = $Matches[2] }
+}
+$Server   = $cfg['CSV_SERVER']
+if (-not $Server) { Write-Error "CSV_SERVER not set — copy .env.example to .env in $here and edit it"; exit 2 }
+$Results  = if ($cfg['CSV_RESULTS'])   { $cfg['CSV_RESULTS'] }   else { "C:/Results" }
+$DestHost = if ($cfg['CSV_DEST_HOST']) { $cfg['CSV_DEST_HOST'] } else { "app@188.245.122.19" }
+$SshKey   = if ($cfg['CSV_SSH_KEY'])   { $cfg['CSV_SSH_KEY'] }   else { "$env:USERPROFILE/.ssh/id_ed25519" }
+$LogFile  = if ($cfg['CSV_LOG'])       { $cfg['CSV_LOG'] }       else { "C:/Results/send-csvs.log" }
 
 # NOTE: the key is locked server-side to rrsync rooted at /home/app/incoming,
 # so the destination path is RELATIVE to that root — just /$Server/, not the full path.
