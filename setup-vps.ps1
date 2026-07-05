@@ -23,17 +23,24 @@ foreach ($line in (Get-Content "$here\.env")) {
 $Server = $cfg['CSV_SERVER']
 if (-not $Server) { Write-Error "CSV_SERVER is not set in $here\.env"; exit 1 }
 
-# 1. rsync + git via Chocolatey (installs Chocolatey itself first if missing)
-if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+# 1. rsync + git via Chocolatey (installs Chocolatey itself first if missing).
+# choco is addressed by FULL PATH throughout - a stale PATH can't break this.
+$chocoExe = "C:\ProgramData\chocolatey\bin\choco.exe"
+if (-not (Test-Path $chocoExe)) {
+    if (Test-Path "C:\ProgramData\chocolatey") {
+        Write-Error ("Broken Chocolatey install: C:\ProgramData\chocolatey exists but choco.exe is missing. " +
+                     "Delete that folder (backup first if unsure) and re-run this script.")
+        exit 1
+    }
     Set-ExecutionPolicy Bypass -Scope Process -Force
     [System.Net.ServicePointManager]::SecurityProtocol = 3072  # TLS 1.2
     Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-    $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine")
 }
 foreach ($pkg in "rsync", "git") {
-    if (-not (Get-Command $pkg -ErrorAction SilentlyContinue)) { choco install $pkg -y }
+    if (-not (Get-Command $pkg -ErrorAction SilentlyContinue)) { & $chocoExe install $pkg -y }
 }
-$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine")
+# fresh installs land in Machine PATH; make them visible to THIS session too
+$env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
 rsync --version | Select-Object -First 1
 
 # 2. SSH key, no passphrase (runs unattended from Task Scheduler)
