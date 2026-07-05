@@ -10,6 +10,57 @@ Conventions:
 - `server$` = command as user `app` on the ingest server (`ssh app@188.245.122.19`).
 - `<SV_NAME>` = this box's unique name: SV1, SV2, ... (test machines: TEST).
 
+## Rules for agents (read first - every one of these was violated during
+## the first shakedown and cost hours)
+
+1. **Never edit any file in `C:\courier` except `.env`.** The box pulls this
+   repo nightly; local edits to tracked files make every future `git pull`
+   fail, silently killing self-update. If a script seems buggy: pull first,
+   re-test, and if it persists REPORT the bug upstream - do not patch locally.
+2. **Before debugging anything, run `git -C C:\courier pull`.** Most bugs you
+   hit have already been fixed upstream. Check `git log --oneline -3` and
+   compare with the repo on GitHub before investigating.
+3. **If the clone is dirty** (a previous agent edited files):
+   `git -C C:\courier checkout -- . ; git -C C:\courier pull`
+4. **`.env` values:** `CSV_RESULTS` must be a WINDOWS-style path
+   (`C:/Results` or `C:\Results`). Never put `/cygdrive/...` in `.env` -
+   the script converts for rsync internally.
+5. **Test through the scheduled task** (`Start-ScheduledTask send-csvs`),
+   not by running the script as your own user - the task runs as SYSTEM,
+   which has different PATH, known_hosts, and env; bugs hide in the gap.
+6. **Do not "fix" the rsync invocation.** The invariant (see next section)
+   looks wrong to fresh eyes and is load-bearing.
+
+## How the transfer works + where a failure localizes
+
+Chain: PowerShell enumerates files -> pipes the list to cygwin rsync via
+STDIN -> rsync spawns the CYGWIN ssh bundled with it -> server sshd checks
+`authorized_keys` -> the key's forced command `rrsync -wo /home/app/incoming`
+validates the rsync request -> files land under `incoming/<SV_NAME>/`.
+
+Load-bearing invariants (violating either reintroduces a fixed bug):
+- **No Windows path may appear anywhere on rsync's command line.** This
+  cygwin build parses any `X:` as a remote host. Hence: file list via
+  `--files-from=-` (stdin, no temp file), source and key paths converted
+  to `/cygdrive/...` form by `ConvertTo-CygPath`.
+- **rsync must use its bundled cygwin ssh**, never Windows-native OpenSSH
+  (`C:\Windows\System32\OpenSSH`). Native ssh works interactively but
+  kills the rsync protocol at 0 bytes (cygwin/native pipe mismatch).
+
+Fault localization by symptom:
+| Symptom | Layer |
+|---|---|
+| PowerShell parse/`Get-ChildItem` errors | script / `.env` (Windows side) |
+| `could not resolve hostname <drive letter>` | a Windows path leaked onto rsync's command line |
+| `Permission denied (publickey)` | server `authorized_keys` (line mangled, perms, wrong key) |
+| `connection unexpectedly closed (0 bytes)` | ssh transport (wrong ssh binary) or rrsync rejected the command |
+| `mkdir ... Permission denied (13)` | server filesystem (dirs root-owned) |
+| `rsync exit 0` but files missing server-side | wrong `CSV_SERVER` / wrong rrsync root |
+
+Harmless noise (ignore if the transfer succeeds): `Could not create
+directory '/home/SYSTEM/.ssh'` and `Failed to add the host to the list of
+known hosts` - cygwin ssh under SYSTEM has no home; the connection proceeds.
+
 ## Prerequisites
 
 - Admin PowerShell access on the VPS.
@@ -126,7 +177,8 @@ VERIFY, all four:
 Nothing else to start: the task runs nightly at 23:55 VPS-local time, pulls
 the latest courier from this repo first, and catches up any missed night
 automatically (files stay put until a transfer succeeds). Fixes are shipped
-by pushing to this repo - never edit files on the box except `.env`.
+by pushing to this repo - never edit files on the box except `.env`
+(rule 1 above; this is the one that bites agents).
 
 ## Decommission a test machine
 
