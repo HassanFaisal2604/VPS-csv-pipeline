@@ -20,6 +20,15 @@ $LogFile  = if ($cfg['CSV_LOG'])       { $cfg['CSV_LOG'] }       else { "C:/Resu
 # so the destination path is RELATIVE to that root - just /$Server/, not the full path.
 $Dest    = "${DestHost}:/$Server/"
 
+# rsync on Windows reads "C:/..." as remote host "C". PowerShell needs the
+# Windows form, rsync the cygwin form - so keep $Results Windows-style and
+# derive the rsync source automatically. (CSV_RESULTS must be a Windows path.)
+if ($Results -match '^([A-Za-z]):(.*)$') {
+    $RsyncSrc = "/cygdrive/" + $Matches[1].ToLower() + ($Matches[2] -replace '\\', '/')
+} else {
+    $RsyncSrc = $Results
+}
+
 # only files older than 5 min: the bot may still be writing newer ones (plan guard)
 $cutoff = (Get-Date).AddMinutes(-5)
 $list = New-TemporaryFile
@@ -30,7 +39,7 @@ Get-ChildItem -Path $Results -Recurse -Filter *.csv |
 
 # accept-new: trust the server's host key on first contact (task runs unattended
 # as SYSTEM, whose known_hosts is empty), refuse if it ever CHANGES afterwards
-$out = & rsync -az --remove-source-files --files-from="$list" -e "ssh -i $SshKey -o StrictHostKeyChecking=accept-new" "$Results" "$Dest" 2>&1
+$out = & rsync -az --remove-source-files --files-from="$list" -e "ssh -i $SshKey -o StrictHostKeyChecking=accept-new" "$RsyncSrc" "$Dest" 2>&1
 $code = $LASTEXITCODE
 Remove-Item $list
 "$(Get-Date -Format o) rsync exit $code`n$out" | Add-Content $LogFile

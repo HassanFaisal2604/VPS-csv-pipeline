@@ -150,7 +150,7 @@ server$ rm -rf /home/app/incoming/<SV_NAME>
 | Parser errors: "string is missing the terminator" | Running an old copy (pre-ASCII fix) | `git -C C:\courier pull`, retry |
 | Chocolatey "existing installation detected" + `choco not recognized` | Broken half-install | If `C:\ProgramData\chocolatey\bin\choco.exe` is missing: delete `C:\ProgramData\chocolatey`, re-run setup |
 | Key line ends with a personal email | Old default reused an existing `id_ed25519` | Pull latest, re-run setup (dedicated `csv-courier_ed25519` default) |
-| rsync: "No such file or directory" on `C:/Results` | cwRsync needs cygwin paths | In `.env`: `CSV_RESULTS=/cygdrive/c/Results` |
+| rsync: "source and destination cannot both be remote" | Old script passed `C:/...` to rsync (reads the colon as a remote host) | `git -C C:\courier pull` - the script now converts paths itself. `CSV_RESULTS` stays Windows-style |
 | "Permission denied (publickey)" | authorized_keys line mangled or perms | Re-paste as ONE line in single quotes; `chmod 600` the file |
 | rsync error mentioning the destination path | rrsync missing/not executable on server | Redo step 0 |
 | `git pull` fails in the log | Box was set up from a ZIP, not a clone | Redo step 1 into `C:\courier`, re-run setup |
