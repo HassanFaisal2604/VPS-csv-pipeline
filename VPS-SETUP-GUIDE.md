@@ -61,6 +61,18 @@ Harmless noise (ignore if the transfer succeeds): `Could not create
 directory '/home/SYSTEM/.ssh'` and `Failed to add the host to the list of
 known hosts` - cygwin ssh under SYSTEM has no home; the connection proceeds.
 
+## Fast path (use this unless it fails)
+
+Steps 1-3 below collapse into ONE paste in an admin PowerShell:
+
+```
+$env:CSV_SERVER="SV1"; irm https://raw.githubusercontent.com/HassanFaisal2604/VPS-csv-pipeline/main/bootstrap.ps1 | iex
+```
+
+Then do step 4 (authorize the printed key line on the server) and step 5
+(end-to-end test). If the paste fails anywhere, fall back to the manual
+steps below - they are the same actions, separated.
+
 ## Prerequisites
 
 - Admin PowerShell access on the VPS.
