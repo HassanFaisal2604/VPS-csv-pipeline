@@ -23,24 +23,25 @@ $Dest    = "${DestHost}:/$Server/"
 # rsync on Windows reads "C:/..." as remote host "C". PowerShell needs the
 # Windows form, rsync the cygwin form - so keep $Results Windows-style and
 # derive the rsync source automatically. (CSV_RESULTS must be a Windows path.)
-if ($Results -match '^([A-Za-z]):(.*)$') {
-    $RsyncSrc = "/cygdrive/" + $Matches[1].ToLower() + ($Matches[2] -replace '\\', '/')
-} else {
-    $RsyncSrc = $Results
+function ConvertTo-CygPath($p) {
+    if ($p -match '^([A-Za-z]):(.*)$') { "/cygdrive/" + $Matches[1].ToLower() + ($Matches[2] -replace '\\', '/') }
+    else { $p }
 }
+$RsyncSrc    = ConvertTo-CygPath $Results
+$SshKeyRsync = ConvertTo-CygPath $SshKey
 
 # only files older than 5 min: the bot may still be writing newer ones (plan guard)
 $cutoff = (Get-Date).AddMinutes(-5)
-$list = New-TemporaryFile
-Get-ChildItem -Path $Results -Recurse -Filter *.csv |
+$files = @(Get-ChildItem -Path $Results -Recurse -Filter *.csv |
     Where-Object { $_.LastWriteTime -lt $cutoff } |
-    ForEach-Object { $_.FullName.Substring($Results.Length + 1).Replace("\", "/") } |
-    Set-Content -Encoding ascii $list
+    ForEach-Object { $_.FullName.Substring($Results.Length + 1).Replace("\", "/") })
 
+# the file list goes to rsync via STDIN (--files-from=-), never via a temp
+# file: this cygwin rsync parses any Windows path argument (C:\...) as a
+# remote host, so no Windows path may appear anywhere on its command line.
 # accept-new: trust the server's host key on first contact (task runs unattended
 # as SYSTEM, whose known_hosts is empty), refuse if it ever CHANGES afterwards
-$out = & rsync -az --remove-source-files --files-from="$list" -e "ssh -i $SshKey -o StrictHostKeyChecking=accept-new" "$RsyncSrc" "$Dest" 2>&1
+$out = $files | & rsync -az --remove-source-files --files-from=- -e "ssh -i $SshKeyRsync -o StrictHostKeyChecking=accept-new" "$RsyncSrc" "$Dest" 2>&1
 $code = $LASTEXITCODE
-Remove-Item $list
 "$(Get-Date -Format o) rsync exit $code`n$out" | Add-Content $LogFile
 exit $code
