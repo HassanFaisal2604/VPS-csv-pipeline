@@ -43,11 +43,24 @@ foreach ($pkg in "rsync", "git") {
 $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
 rsync --version | Select-Object -First 1
 
-# 2. SSH key, no passphrase (runs unattended from Task Scheduler)
-$key = if ($cfg['CSV_SSH_KEY']) { $cfg['CSV_SSH_KEY'] } else { "$env:USERPROFILE\.ssh\csv-courier_ed25519" }
+# 2. SSH key, no passphrase (runs unattended from Task Scheduler).
+# The task runs as SYSTEM, so the key MUST live in a machine location SYSTEM
+# owns - ssh rejects a key it doesn't own ("bad ownership or modes"), so a key
+# in a user profile (the old default) silently fails only under the SYSTEM task.
+# Default to C:\ProgramData\csv-courier, owned by SYSTEM, no other access.
+$key = if ($cfg['CSV_SSH_KEY']) { $cfg['CSV_SSH_KEY'] } else { "C:\ProgramData\csv-courier\csv-courier_ed25519" }
 if (-not (Test-Path $key)) {
     New-Item -ItemType Directory -Force (Split-Path -Parent $key) | Out-Null
     ssh-keygen -t ed25519 -f $key -N '""' -C "csv-courier-$Server"
+    # Well-known SIDs, not names, so this holds on non-English Windows:
+    # S-1-5-18 = SYSTEM, S-1-5-32-544 = Administrators.
+    icacls $key /setowner "*S-1-5-18" | Out-Null
+    icacls $key /inheritance:r /grant:r "*S-1-5-18:R" "*S-1-5-32-544:R" | Out-Null
+}
+# Pin the absolute key path into .env so the SYSTEM task reads it (its
+# $env:USERPROFILE is systemprofile, not the admin's profile).
+if (-not $cfg['CSV_SSH_KEY']) {
+    Add-Content "$here\.env" ("CSV_SSH_KEY=" + (((Resolve-Path $key).Path) -replace '\\', '/'))
 }
 
 # 3. nightly task at 23:55 VPS-local time: pull latest courier, then run it.

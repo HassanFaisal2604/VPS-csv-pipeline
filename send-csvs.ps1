@@ -31,11 +31,15 @@ $RsyncSrc    = ConvertTo-CygPath $Results
 $SshKeyRsync = ConvertTo-CygPath $SshKey
 
 # cygwin rsync MUST use its own bundled cygwin ssh - spawning Windows-native
-# OpenSSH kills the rsync protocol at 0 bytes (cygwin/native pipe mismatch).
-$BundledSsh = "C:\ProgramData\chocolatey\lib\rsync\tools\ssh.exe"
+# OpenSSH kills the rsync protocol at 0 bytes (cygwin/native pipe mismatch),
+# and can't parse the /cygdrive key path (-> silent publickey failure).
+# The cwrsync choco package ships ssh under tools\bin\ - locate it rather than
+# hardcode, since the exact path varies by package version.
+$BundledSsh = Get-ChildItem "C:\ProgramData\chocolatey\lib\rsync" -Recurse -Filter ssh.exe -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
 $SshCmd = if ($cfg['CSV_SSH_EXE']) { ConvertTo-CygPath $cfg['CSV_SSH_EXE'] }
-          elseif (Test-Path $BundledSsh) { ConvertTo-CygPath $BundledSsh }
-          else { "ssh" }
+          elseif ($BundledSsh)      { ConvertTo-CygPath $BundledSsh }
+          else                      { "ssh" }
 
 # only files older than 5 min: the bot may still be writing newer ones (plan guard)
 $cutoff = (Get-Date).AddMinutes(-5)
