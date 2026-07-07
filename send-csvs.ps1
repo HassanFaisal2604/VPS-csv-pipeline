@@ -52,7 +52,8 @@ $files = @(Get-ChildItem -Path $Results -Recurse -Filter *.csv |
 # remote host, so no Windows path may appear anywhere on its command line.
 # accept-new: trust the server's host key on first contact (task runs unattended
 # as SYSTEM, whose known_hosts is empty), refuse if it ever CHANGES afterwards
-$out = $files | & rsync -az --remove-source-files --files-from=- -e "$SshCmd -i $SshKeyRsync -o StrictHostKeyChecking=accept-new" "$RsyncSrc" "$Dest" 2>&1
+# -v --stats: log each file sent + a transfer summary (count, bytes, speed).
+$out = $files | & rsync -avz --stats --remove-source-files --files-from=- -e "$SshCmd -i $SshKeyRsync -o StrictHostKeyChecking=accept-new" "$RsyncSrc" "$Dest" 2>&1
 $code = $LASTEXITCODE
-"$(Get-Date -Format o) rsync exit $code`n$out" | Add-Content $LogFile
+"$(Get-Date -Format o) queued $($files.Count) files, rsync exit $code`n$out" | Add-Content $LogFile
 exit $code
