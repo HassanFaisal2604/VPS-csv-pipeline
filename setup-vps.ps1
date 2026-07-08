@@ -63,9 +63,15 @@ if (-not $cfg['CSV_SSH_KEY']) {
     Add-Content "$here\.env" ("CSV_SSH_KEY=" + (((Resolve-Path $key).Path) -replace '\\', '/'))
 }
 
-# 3. nightly task at 23:55 VPS-local time: pull latest courier, then run it.
-# StartWhenAvailable = catch up a missed start (e.g. the box was rebooting).
-$cmd = "git -C $here pull --quiet; & $here\send-csvs.ps1"
+# 3. nightly task at 23:55 VPS-local time: pull latest courier (best-effort),
+# then run it. StartWhenAvailable = catch up a missed start (box rebooting).
+# git is resolved to its full path NOW (setup has it on PATH) and baked into the
+# task, so the SYSTEM task never depends on git being on the machine PATH; the
+# pull is wrapped in try/catch so a missing or failed self-update can NEVER block
+# the nightly send. If git can't be found at all, the pull is simply skipped.
+$git  = (Get-Command git -ErrorAction SilentlyContinue).Source
+$pull = if ($git) { "try { & '$git' -C '$here' pull --quiet } catch {} ; " } else { "" }
+$cmd  = "$pull& '$here\send-csvs.ps1'"
 $action   = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"$cmd`""
 $trigger  = New-ScheduledTaskTrigger -Daily -At 23:55
