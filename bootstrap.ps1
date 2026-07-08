@@ -27,7 +27,11 @@ if (-not (Test-Path "C:\courier\.git")) {
 }
 
 if (-not (Test-Path "C:\courier\.env")) {
-    "CSV_SERVER=$Server" | Set-Content C:\courier\.env
+    $envLines = "CSV_SERVER=$Server"
+    # Boxes whose bot writes somewhere other than C:\Results (e.g. C:\MP Results)
+    # pass the path via $env:CSV_RESULTS so the client never edits .env by hand.
+    if ($env:CSV_RESULTS) { $envLines += "`nCSV_RESULTS=$env:CSV_RESULTS" }
+    Set-Content C:\courier\.env $envLines
 }
 
 & powershell -ExecutionPolicy Bypass -File C:\courier\setup-vps.ps1
