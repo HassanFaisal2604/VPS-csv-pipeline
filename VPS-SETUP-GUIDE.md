@@ -6,11 +6,65 @@ run it end to end. Every step has a VERIFY with the expected result - do not
 proceed past a failed VERIFY; see "Known failures" at the bottom first.
 
 Conventions:
+
 - `PS>` = command in an **elevated (admin) PowerShell** on the VPS.
 - `server$` = command as user `app` on the ingest server (`ssh app@188.245.122.19`).
 - `<SV_NAME>` = this box's unique name: SV1, SV2, ... (test machines: TEST).
 
+## Operator quick path (RDP) - onboard a box in ~5 minutes
+
+You need: RDP credentials for the VPS, the box's `<SV_NAME>` (unique, never
+reuse one), and SSH to the ingest server. Everything here is safe to re-run.
+
+**1. RDP in, pre-flight (2 checks that cost a day if skipped):**
+
+```
+PS> Get-TimeZone     # note it: if the 23:55 local send lands after 00:15 UTC, files wait a day
+PS> Get-ChildItem C:\Results   # tool folders EXACTLY: Follows, Likes, Post Saves, Reel Views, Story Views
+```
+
+Wrong/missing tool folder names -> fix the bot's output path first, or those
+files will quarantine to `failed/` forever.
+
+**2. One paste in an admin PowerShell** (right-click Start -> Terminal (Admin));
+change `SV1` to this box's name:
+
+```
+$env:CSV_SERVER="SV1"; irm https://raw.githubusercontent.com/HassanFaisal2604/VPS-csv-pipeline/main/bootstrap.ps1 | iex
+```
+
+Wait for `=== SV1 set up. ONE manual step left ===` and copy the printed
+`restrict,command=...` line (it must end `csv-courier-SV1`).
+
+**3. On the ingest server, authorize the key** (single quotes, one line):
+
+```
+server$ echo 'PASTE_THE_PRINTED_LINE' >> /home/app/.ssh/authorized_keys
+```
+
+**4. Test the send now (don't wait for 23:55):**
+
+```
+PS> Start-ScheduledTask -TaskName send-csvs
+PS> Start-Sleep 15; Get-Content C:\courier\send-csvs.log -Tail 5   # expect "rsync exit 0"
+```
+
+**5. Test the load now (don't wait for 00:15):**
+
+```
+server$ find /home/app/incoming/SV1 -name '*.csv' | head           # files arrived?
+server$ sudo -u app /home/app/Startviral/ingestion/nightly-load.sh
+server$ tail -5 /home/app/ingestion-logs/ingest.log                # "N files ok, 0 failed"
+```
+
+**6. Done.** The task self-updates and runs nightly; a missed night catches up
+automatically. If any step's output differs from the expected text, jump to
+"Known failures" at the bottom - do NOT improvise fixes on the box (rule 1).
+
+---
+
 ## Rules for agents (read first - every one of these was violated during
+
 ## the first shakedown and cost hours)
 
 1. **Never edit any file in `C:\courier` except `.env`.** The box pulls this
@@ -39,6 +93,7 @@ STDIN -> rsync spawns the CYGWIN ssh bundled with it -> server sshd checks
 validates the rsync request -> files land under `incoming/<SV_NAME>/`.
 
 Load-bearing invariants (violating either reintroduces a fixed bug):
+
 - **No Windows path may appear anywhere on rsync's command line.** This
   cygwin build parses any `X:` as a remote host. Hence: file list via
   `--files-from=-` (stdin, no temp file), source and key paths converted
@@ -172,10 +227,11 @@ account):
 
 ```
 PS> Start-ScheduledTask -TaskName send-csvs
-PS> Start-Sleep 15; Get-Content C:\Results\send-csvs.log -Tail 5
+PS> Start-Sleep 15; Get-Content C:\courier\send-csvs.log -Tail 5
 ```
 
 VERIFY, all four:
+
 1. Log's last entry says `rsync exit 0`.
 2. CSVs older than 5 minutes are GONE from `C:\Results` (files newer than
    5 min remaining behind is CORRECT - they ship next night).
@@ -191,6 +247,26 @@ the latest courier from this repo first, and catches up any missed night
 automatically (files stay put until a transfer succeeds). Fixes are shipped
 by pushing to this repo - never edit files on the box except `.env`
 (rule 1 above; this is the one that bites agents).
+
+## Backfill / force a full resend
+
+The courier only ships files whose `LastWriteTime` is newer than the watermark
+in `C:\courier\.last-sent`. Two things silently defeat that:
+
+- CSVs **copied in with old timestamps** (a backlog moved from another folder,
+  a restored directory) - already "older" than the watermark, never sent.
+- The **clock stepping backwards** (NTP correction, VM snapshot restore) - new
+  files get stamped before the watermark, never sent.
+
+The fix is always the same and is safe to run any time (the server load is
+idempotent - re-loading an already-loaded file is a no-op):
+
+```
+PS> Remove-Item C:\courier\.last-sent
+PS> Start-ScheduledTask -TaskName send-csvs
+```
+
+Everything in `C:\Results` older than 5 minutes is resent.
 
 ## Decommission a test machine
 
@@ -209,14 +285,15 @@ server$ rm -rf /home/app/incoming/<SV_NAME>
 
 ## Known failures (all hit and fixed during shakedown - newest script has the fixes)
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| Parser errors: "string is missing the terminator" | Running an old copy (pre-ASCII fix) | `git -C C:\courier pull`, retry |
-| Chocolatey "existing installation detected" + `choco not recognized` | Broken half-install | If `C:\ProgramData\chocolatey\bin\choco.exe` is missing: delete `C:\ProgramData\chocolatey`, re-run setup |
-| Key line ends with a personal email | Old default reused an existing `id_ed25519` | Pull latest, re-run setup (dedicated `csv-courier_ed25519` default) |
-| rsync: "source and destination cannot both be remote" | Old script passed `C:/...` to rsync (reads the colon as a remote host) | `git -C C:\courier pull` - the script now converts paths itself. `CSV_RESULTS` stays Windows-style |
+| Symptom                                                                  | Cause                                                                          | Fix                                                                                                                               |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Parser errors: "string is missing the terminator"                        | Running an old copy (pre-ASCII fix)                                            | `git -C C:\courier pull`, retry                                                                                                   |
+| Chocolatey "existing installation detected" + `choco not recognized`     | Broken half-install                                                            | If `C:\ProgramData\chocolatey\bin\choco.exe` is missing: delete `C:\ProgramData\chocolatey`, re-run setup                         |
+| Key line ends with a personal email                                      | Old default reused an existing `id_ed25519`                                    | Pull latest, re-run setup (dedicated `csv-courier_ed25519` default)                                                               |
+| rsync: "source and destination cannot both be remote"                    | Old script passed `C:/...` to rsync (reads the colon as a remote host)         | `git -C C:\courier pull` - the script now converts paths itself. `CSV_RESULTS` stays Windows-style                                |
 | "connection unexpectedly closed (0 bytes)" right after SSH auth succeeds | cygwin rsync spawned Windows-native OpenSSH (pipe mismatch kills the protocol) | `git -C C:\courier pull` - the courier now uses the cygwin ssh bundled with the rsync package (`CSV_SSH_EXE` in `.env` overrides) |
-| `mkdir ... failed: Permission denied (13)` on the server side | Step 0 dirs were created as root, so `app` cannot write them | `sudo chown -R app:app /home/app/incoming /home/app/processed /home/app/failed` |
-| "Permission denied (publickey)" | authorized_keys line mangled or perms | Re-paste as ONE line in single quotes; `chmod 600` the file |
-| rsync error mentioning the destination path | rrsync missing/not executable on server | Redo step 0 |
-| `git pull` fails in the log | Box was set up from a ZIP, not a clone | Redo step 1 into `C:\courier`, re-run setup |
+| `mkdir ... failed: Permission denied (13)` on the server side            | Step 0 dirs were created as root, so `app` cannot write them                   | `sudo chown -R app:app /home/app/incoming /home/app/processed /home/app/failed`                                                   |
+| "Permission denied (publickey)"                                          | authorized_keys line mangled or perms                                          | Re-paste as ONE line in single quotes; `chmod 600` the file                                                                       |
+| rsync error mentioning the destination path                              | rrsync missing/not executable on server                                        | Redo step 0                                                                                                                       |
+| `git pull` fails in the log                                              | Box was set up from a ZIP, not a clone                                         | Redo step 1 into `C:\courier`, re-run setup                                                                                       |
+| Log shows `git pull FAILED` nightly                                       | "dubious ownership" (task runs as SYSTEM, clone owned by admin) or local edits | Re-run setup (registers `safe.directory`); if edits: `git -C C:\courier checkout -- . ; git -C C:\courier pull`                   |

@@ -80,7 +80,9 @@ try {
     # as SYSTEM, whose known_hosts is empty), refuse if it ever CHANGES afterwards.
     # NO --remove-source-files: files are retained on this box in $Results.
     # -v --stats: log each file sent + a transfer summary (count, bytes, speed).
-    $out = $files | & $Rsync -avz --stats --files-from=- -e "$SshCmd -i $SshKeyRsync -o StrictHostKeyChecking=accept-new" "$RsyncSrc" "$Dest" 2>&1
+    # ConnectTimeout/ServerAlive: a dead route must fail fast (and get retried by
+    # the task's restart settings), not hang until Task Scheduler's 72h kill.
+    $out = $files | & $Rsync -avz --stats --files-from=- -e "$SshCmd -i $SshKeyRsync -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=4" "$RsyncSrc" "$Dest" 2>&1
     $code = $LASTEXITCODE
     # Advance the watermark only on success, so a failed night retries the same
     # window next run (catch-up) instead of skipping it.

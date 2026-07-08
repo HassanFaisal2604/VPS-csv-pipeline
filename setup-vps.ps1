@@ -70,12 +70,31 @@ if (-not $cfg['CSV_SSH_KEY']) {
 # pull is wrapped in try/catch so a missing or failed self-update can NEVER block
 # the nightly send. If git can't be found at all, the pull is simply skipped.
 $git  = (Get-Command git -ErrorAction SilentlyContinue).Source
-$pull = if ($git) { "try { & '$git' -C '$here' pull --quiet } catch {} ; " } else { "" }
+# The clone was made by the admin user but the task runs as SYSTEM - modern git
+# refuses cross-user repos ("dubious ownership"), which would kill self-update
+# silently forever. Mark the courier dir safe machine-wide (--system needs the
+# admin shell we're already in).
+if ($git) {
+    $herePosix = $here -replace '\\', '/'
+    # try/catch: under EAP=Stop, PS 5.1 can throw on redirected native stderr
+    try { $safe = @(& $git config --system --get-all safe.directory 2>$null) } catch { $safe = @() }
+    if ($safe -notcontains $herePosix) { & $git config --system --add safe.directory $herePosix }
+}
+# A failed pull must leave a trace in the log (not vanish in catch{}) - a dead
+# self-update means fixes pushed upstream never reach this box.
+$logNote = "Add-Content '$here\send-csvs.log' ((Get-Date -Format o) + ' git pull FAILED"
+$pull = if ($git) {
+    "try { & '$git' -C '$here' pull --quiet 2>&1 | Out-Null; if (`$LASTEXITCODE -ne 0) { $logNote exit ' + `$LASTEXITCODE + ' - self-update dead, re-run setup-vps.ps1') } } catch { $logNote : ' + `$_.Exception.Message) }; "
+} else { "" }
 $cmd  = "$pull& '$here\send-csvs.ps1'"
 $action   = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"$cmd`""
 $trigger  = New-ScheduledTaskTrigger -Daily -At 23:55
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable
+# Restart 3x every 15 min on a failed send (network blip at 23:55 must not cost
+# a whole day); 2h hard limit so a hung transfer can't block the next night.
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
+    -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 15) `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 2)
 Register-ScheduledTask -TaskName "send-csvs" -Action $action -Trigger $trigger `
     -Settings $settings -User "SYSTEM" -Force | Out-Null
 
