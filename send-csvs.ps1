@@ -14,7 +14,10 @@ if (-not $Server) { Write-Error "CSV_SERVER not set - copy .env.example to .env 
 $Results  = if ($cfg['CSV_RESULTS'])   { $cfg['CSV_RESULTS'] }   else { "C:/Results" }
 $DestHost = if ($cfg['CSV_DEST_HOST']) { $cfg['CSV_DEST_HOST'] } else { "app@188.245.122.19" }
 $SshKey   = if ($cfg['CSV_SSH_KEY'])   { $cfg['CSV_SSH_KEY'] }   else { "$env:USERPROFILE/.ssh/csv-courier_ed25519" }
-$LogFile  = if ($cfg['CSV_LOG'])       { $cfg['CSV_LOG'] }       else { "C:/Results/send-csvs.log" }
+# Log next to the script (C:\courier) - a known path that always exists and is
+# decoupled from C:\Results, so a missing/empty data folder can't hide errors.
+# Override with CSV_LOG to send it anywhere (e.g. the Desktop); the dir is created.
+$LogFile  = if ($cfg['CSV_LOG'])       { $cfg['CSV_LOG'] }       else { "$here\send-csvs.log" }
 # watermark of the last successful send: files stay put in $Results (we do NOT
 # delete after shipping), so without this every run would re-send everything.
 $StateFile = if ($cfg['CSV_STATE'])    { $cfg['CSV_STATE'] }     else { "$here\.last-sent" }
