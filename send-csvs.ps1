@@ -88,6 +88,14 @@ try {
     # window next run (catch-up) instead of skipping it.
     if ($code -eq 0) { $cutoff.ToString("o") | Set-Content $StateFile }
     "$(Get-Date -Format o) queued $($files.Count) files, rsync exit $code`n$out" | Add-Content $LogFile
+    # Ship this box's courier log to the server too, so every run is visible
+    # server-side (per box) without RDP-ing in. Lands at /home/app/incoming/
+    # $Server/send-csvs.log - inside the rrsync jail, and the loader skips
+    # non-.csv files so it just sits there. Best-effort: a log-ship failure must
+    # never change the send's exit code, so it's fully isolated and swallowed.
+    try {
+        & $Rsync -az -e "$SshCmd -i $SshKeyRsync -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30" (ConvertTo-CygPath $LogFile) "${DestHost}:/$Server/send-csvs.log" 2>&1 | Out-Null
+    } catch {}
     exit $code
 } catch {
     "$(Get-Date -Format o) ERROR: $($_.Exception.Message)" | Add-Content $LogFile
