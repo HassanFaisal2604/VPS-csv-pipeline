@@ -136,8 +136,10 @@ $cmd  = "$pull& '$here\send-csvs.ps1'"
 $action   = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"$cmd`""
 $trigger  = New-ScheduledTaskTrigger -Daily -At 23:55
-# Restart 3x every 15 min on a failed send (network blip at 23:55 must not cost
-# a whole day); 2h hard limit so a hung transfer can't block the next night.
+# RestartCount covers a LAUNCH failure only (box mid-reboot at 23:55) - Task
+# Scheduler does NOT restart on a nonzero exit code, so a failed SEND is retried
+# inside send-csvs.ps1 itself. 2h hard limit so a hung transfer can't block the
+# next night.
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable `
     -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 15) `
     -ExecutionTimeLimit (New-TimeSpan -Hours 2)
@@ -150,7 +152,7 @@ Write-Host ""
 Write-Host "=== $Server set up. ONE manual step left ==="
 Write-Host "Append this line to /home/app/.ssh/authorized_keys on the server:"
 Write-Host ""
-Write-Host "restrict,command=`"rrsync -wo /home/app/incoming`" $pub"
+Write-Host "restrict,command=`"rrsync -no-lock -wo /home/app/incoming`" $pub"
 Write-Host ""
 Write-Host "Then verify from this box:"
 Write-Host "  powershell -Command `"$cmd`""

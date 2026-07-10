@@ -80,14 +80,24 @@ try {
     # as SYSTEM, whose known_hosts is empty), refuse if it ever CHANGES afterwards.
     # NO --remove-source-files: files are retained on this box in $Results.
     # -v --stats: log each file sent + a transfer summary (count, bytes, speed).
-    # ConnectTimeout/ServerAlive: a dead route must fail fast (and get retried by
-    # the task's restart settings), not hang until Task Scheduler's 72h kill.
-    $out = $files | & $Rsync -avz --stats --files-from=- -e "$SshCmd -i $SshKeyRsync -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=4" "$RsyncSrc" "$Dest" 2>&1
-    $code = $LASTEXITCODE
+    # ConnectTimeout/ServerAlive: a dead route must fail fast, not hang until
+    # Task Scheduler's kill. Retry in-script (loop below), NOT via the task's
+    # RestartCount: Task Scheduler restarts only on a launch/crash failure, never
+    # on a nonzero EXIT code, so a transient rsync failure (a network blip, or a
+    # brief collision with another courier holding the server's incoming dir)
+    # would otherwise silently lose the whole night. 3 attempts, 60s apart.
+    $out = ""; $code = 1; $attempts = 0
+    for ($t = 1; $t -le 3; $t++) {
+        $attempts = $t
+        $out = $files | & $Rsync -avz --stats --files-from=- -e "$SshCmd -i $SshKeyRsync -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 -o ServerAliveInterval=30 -o ServerAliveCountMax=4" "$RsyncSrc" "$Dest" 2>&1
+        $code = $LASTEXITCODE
+        if ($code -eq 0) { break }
+        if ($t -lt 3) { Start-Sleep -Seconds 60 }
+    }
     # Advance the watermark only on success, so a failed night retries the same
     # window next run (catch-up) instead of skipping it.
     if ($code -eq 0) { $cutoff.ToString("o") | Set-Content $StateFile }
-    "$(Get-Date -Format o) queued $($files.Count) files, rsync exit $code`n$out" | Add-Content $LogFile
+    "$(Get-Date -Format o) queued $($files.Count) files, rsync exit $code after $attempts attempt(s)`n$out" | Add-Content $LogFile
     # Ship this box's courier log to the server too, so every run is visible
     # server-side (per box) without RDP-ing in. Lands at /home/app/incoming/
     # $Server/send-csvs.log - inside the rrsync jail, and the loader skips
